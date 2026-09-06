@@ -36,12 +36,13 @@ from ui.experiment_page import render_experiment_page
 # Apply Custom Styling
 apply_custom_styles()
 
-# Auto-initialize session state with local 10-patient dataset if not already present
+# Auto-initialize session state with main care.csv dataset if not already present
+CARE_CSV_PATH = os.path.join(os.path.dirname(__file__), "care.csv")
 LOCAL_10_CSV = os.path.join(os.path.dirname(__file__), "sample_10_patients.csv")
 SAMPLE_CSV_PATH = os.path.join(os.path.dirname(__file__), "data", "sample_patients.csv")
 
 if "processed_data" not in st.session_state or st.session_state["processed_data"] is None:
-    target_path = LOCAL_10_CSV if os.path.exists(LOCAL_10_CSV) else SAMPLE_CSV_PATH
+    target_path = CARE_CSV_PATH if os.path.exists(CARE_CSV_PATH) else (LOCAL_10_CSV if os.path.exists(LOCAL_10_CSV) else SAMPLE_CSV_PATH)
     if os.path.exists(target_path):
         try:
             df_local = pd.read_csv(target_path)
@@ -54,7 +55,7 @@ if "processed_data" not in st.session_state or st.session_state["processed_data"
             st.session_state["last_file_name"] = os.path.basename(target_path)
             st.session_state["is_custom_upload"] = False
         except Exception as e:
-            st.error(f"Error loading local CSV file: {e}")
+            st.error(f"Error loading main CSV file: {e}")
 
 if "current_user_id" not in st.session_state:
     st.session_state.current_user_id = "admin_01"
@@ -146,7 +147,7 @@ with st.sidebar:
         m = st.session_state["processed_data"]["metrics"]
         file_name = st.session_state.get("last_file_name", "Dataset Loaded")
         is_custom = st.session_state.get("is_custom_upload", False)
-        status_label = "Uploaded CSV Loaded" if is_custom else "Default Sample CSV"
+        status_label = "Uploaded CSV Loaded" if is_custom else "Main Dataset (care.csv)"
         st.markdown(f"""
             <div style="background: #f1f5f9; padding: 10px; border-radius: 8px; font-size: 0.78rem; color: #334155;">
                 🟢 <strong>{status_label}:</strong><br/>

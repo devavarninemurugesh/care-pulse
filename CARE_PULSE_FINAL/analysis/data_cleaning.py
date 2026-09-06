@@ -45,17 +45,20 @@ def clean_and_inspect_dataframe(df: pd.DataFrame, strict_reject_zero_or_missing:
 
     missing_val_mask = pd.Series(False, index=raw_df.index)
     zero_val_mask = pd.Series(False, index=raw_df.index)
+    col_missing_masks = {}
+    col_zero_masks = {}
 
     if strict_reject_zero_or_missing and check_cols:
-        for idx in raw_df.index:
-            for col in check_cols:
-                val = raw_df.loc[idx, col]
-                if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "null"]:
-                    missing_val_mask.loc[idx] = True
-                else:
-                    num_val = pd.to_numeric(val, errors="coerce")
-                    if pd.isna(num_val) or num_val == 0:
-                        zero_val_mask.loc[idx] = True
+        for col in check_cols:
+            s = raw_df[col]
+            str_s = s.astype(str).str.strip().str.lower()
+            num_s = pd.to_numeric(s, errors="coerce")
+            col_missing = s.isna() | str_s.isin(["", "none", "nan", "null"]) | num_s.isna()
+            col_zero = (~col_missing) & (num_s == 0)
+            col_missing_masks[col] = col_missing
+            col_zero_masks[col] = col_zero
+            missing_val_mask |= col_missing
+            zero_val_mask |= col_zero
 
     # Combine masks for rejections
     rejected_mask = missing_id_mask | invalid_date_mask | duplicate_mask
@@ -74,19 +77,9 @@ def clean_and_inspect_dataframe(df: pd.DataFrame, strict_reject_zero_or_missing:
         if duplicate_mask.loc[idx]:
             r_reasons.append("Duplicate record for same patient and date")
 
-        # Check missing or zero columns for this row
-        row_missing = []
-        row_zero = []
-        for col in check_cols:
-            val = raw_df.loc[idx, col]
-            if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() in ["none", "nan", "null"]:
-                row_missing.append(col)
-            else:
-                num_val = pd.to_numeric(val, errors="coerce")
-                if pd.isna(num_val):
-                    row_missing.append(col)
-                elif num_val == 0:
-                    row_zero.append(col)
+        # Check missing or zero columns for this row using pre-computed masks
+        row_missing = [col for col in check_cols if col_missing_masks.get(col, pd.Series()).get(idx, False)]
+        row_zero = [col for col in check_cols if col_zero_masks.get(col, pd.Series()).get(idx, False)]
 
         if row_missing:
             r_reasons.append(f"No/Missing value in column(s): {', '.join(row_missing)}")
@@ -101,6 +94,13 @@ def clean_and_inspect_dataframe(df: pd.DataFrame, strict_reject_zero_or_missing:
     valid_raw = raw_df[~rejected_mask].copy()
     valid_raw["patient_id"] = valid_raw["patient_id"].astype(str).str.strip()
     valid_raw["date"] = parsed_dates[~rejected_mask]
+
+    # Standardize incident strings (e.g. Yes/No, True/False) to binary 1/0
+    if "incident" in valid_raw.columns:
+        incident_map = {"yes": 1, "no": 0, "true": 1, "false": 0, "1": 1, "0": 0}
+        s_inc = valid_raw["incident"].astype(str).str.strip().str.lower()
+        mapped_inc = s_inc.map(incident_map)
+        valid_raw["incident"] = mapped_inc.fillna(pd.to_numeric(valid_raw["incident"], errors="coerce")).fillna(0).astype(int)
 
     # Numeric columns cleaning & clipping
     numeric_cols = {

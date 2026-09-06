@@ -80,7 +80,7 @@ DEMO_USERS: Dict[str, Dict[str, Any]] = {
         "description": "Clinical Supervisor (Access to all patients)"
     },
     "staff_01": {
-        "name": "Yuya (Authorized Staff)",
+        "name": "Yuva (Authorized Staff)",
         "role": ROLE_AUTHORIZED_STAFF,
         "patients": "ALL",
         "description": "Authorized Clinical Analyst (Access to all patients)"

@@ -119,18 +119,20 @@ def render_upload_page():
 
         if st.session_state.get("is_custom_upload"):
             with col_b2:
-                if st.button("🔄 Reset to Default Sample Data"):
+                if st.button("🔄 Reset to Main Dataset (care.csv)"):
                     app_dir = os.path.dirname(os.path.dirname(__file__))
+                    CARE_CSV = os.path.join(app_dir, "care.csv")
                     LOCAL_10_CSV = os.path.join(app_dir, "sample_10_patients.csv")
-                    if os.path.exists(LOCAL_10_CSV):
-                        df_local = pd.read_csv(LOCAL_10_CSV)
+                    target_csv = CARE_CSV if os.path.exists(CARE_CSV) else LOCAL_10_CSV
+                    if os.path.exists(target_csv):
+                        df_local = pd.read_csv(target_csv)
                         st.session_state["raw_csv_df"] = df_local
                         c_df, r_df, st_map = clean_and_inspect_dataframe(df_local)
                         st.session_state["cleaned_df"] = c_df
                         st.session_state["rejected_df"] = r_df
                         st.session_state["clean_stats"] = st_map
                         st.session_state["processed_data"] = process_dataset(c_df)
-                        st.session_state["last_file_name"] = os.path.basename(LOCAL_10_CSV)
+                        st.session_state["last_file_name"] = os.path.basename(target_csv)
                         st.session_state["is_custom_upload"] = False
                         st.session_state.pop("last_uploaded_file_key", None)
                         st.rerun()
