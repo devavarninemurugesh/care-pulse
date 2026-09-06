@@ -1,3 +1,5 @@
+WEB URL : https://care-pulse.streamlit.app/
+
 # CARE PULSE — Home-Care Early Functional Decline Detection
 
 CARE PULSE is a Streamlit-based clinical decision-support prototype for identifying **early, longitudinal functional decline** in home-care patients from observational data. It compares recent observations with a historical baseline across mobility, nutrition, participation, activity, and incident history, then presents explainable risk signals for human review.
