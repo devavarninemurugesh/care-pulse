@@ -1,0 +1,11 @@
+patient_id,date,mobility,nutrition,participation,activity,incident,notes
+Naveen,2026-05-30,8.5,88.0,8.5,8.2,0,Routines completed smoothly. No concerns noted.
+kavin,2026-05-30,4.2,45.0,3.8,3.5,1,SIMULATED ADVERSE EVENT: Fall reported in morning.
+praveen,2026-05-30,8.0,85.0,8.0,7.8,0,Patient in good spirits today.
+dinesh,2026-05-30,5.1,55.0,4.8,4.5,0,Mobility drop noted over past 7 days.
+ajay,2026-05-30,9.0,92.0,9.0,8.8,0,Active and communicative.
+tharun,2026-05-30,8.2,86.0,8.1,7.9,0,Standard daily observation logged.
+aaruran,2026-05-30,8.8,90.0,8.6,8.4,0,Good nutritional intake.
+dharsini,2026-05-15,8.0,85.0,8.0,7.5,0,Stale observation record (15 days ago).
+yuva,2026-05-30,,80.0,8.0,7.0,0,Missing mobility observation value.
+mei,2026-05-30,4.0,88.0,8.5,3.5,0,Temporary single-day observation dip noted.
