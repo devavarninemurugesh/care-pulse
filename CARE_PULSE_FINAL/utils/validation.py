@@ -62,7 +62,7 @@ def validate_csv_dataframe(df: pd.DataFrame) -> Tuple[bool, Dict[str, Any]]:
     if summary["missing_id_count"] > 0:
         summary["warnings"].append(f"{summary['missing_id_count']} rows are missing patient_id.")
 
-    # 2. Invalid dates
+    # 2. Invalid dates and future dates
     parsed_dates = pd.to_datetime(df["date"], errors="coerce")
     invalid_dates = parsed_dates.isna()
     summary["invalid_date_count"] = int(invalid_dates.sum())
@@ -74,6 +74,13 @@ def validate_csv_dataframe(df: pd.DataFrame) -> Tuple[bool, Dict[str, Any]]:
         min_d = valid_dates.min().strftime("%b %Y")
         max_d = valid_dates.max().strftime("%b %Y")
         summary["date_range"] = f"{min_d} – {max_d}"
+
+        # Detect future date observations relative to dataset/system timestamp
+        future_dates = valid_dates > pd.Timestamp.now()
+        future_count = int(future_dates.sum())
+        summary["future_date_count"] = future_count
+        if future_count > 0:
+            summary["warnings"].append(f"{future_count} observation records contain future timestamps.")
 
     # 3. Duplicate observations (same patient_id and date)
     valid_id_date_mask = (~missing_ids) & (~invalid_dates)
