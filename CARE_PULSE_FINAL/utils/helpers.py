@@ -1,5 +1,34 @@
+"""
+Central helper functions and UI styling utilities for CARE PULSE.
+"""
+
 import streamlit as st
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
+
+# Central Data Freshness Configuration (Configurable Thresholds)
+FRESHNESS_THRESHOLDS = {
+    "FRESH_MAX_DAYS": 1,      # 0–1 days: 🟢 Fresh
+    "AGING_MAX_DAYS": 3,      # 2–3 days: 🟡 Aging
+    # 4+ days: 🔴 Stale
+}
+
+def get_freshness_status(days_since_last: Optional[int]) -> Tuple[str, str, str]:
+    """
+    Determines non-medical data freshness status based on central thresholds.
+    Returns tuple of (freshness_label, icon, status_message).
+    - 0–1 days: Fresh (🟢)
+    - 2–3 days: Aging (🟡)
+    - 4+ days: Stale (🔴)
+    - None / negative: No Data (⚪)
+    """
+    if days_since_last is None or days_since_last < 0 or days_since_last >= 900:
+        return "No Data", "⚪", "No recent observation data recorded."
+    elif days_since_last <= FRESHNESS_THRESHOLDS["FRESH_MAX_DAYS"]:
+        return "Fresh", "🟢", "Observation data is up-to-date."
+    elif days_since_last <= FRESHNESS_THRESHOLDS["AGING_MAX_DAYS"]:
+        return "Aging", "🟡", f"Observation data is {days_since_last} days old (aging)."
+    else:
+        return "Stale", "🔴", "⚠️ Observation data is several days old. Trend interpretation confidence is reduced."
 
 def apply_custom_css():
     """Injects modern, clean healthcare CSS styling into Streamlit."""
@@ -56,6 +85,7 @@ def apply_custom_css():
             .badge-urgent-review { background: #fee2e2; color: #b91c1c; }
             .badge-missing-info { background: #fef9c3; color: #854d0e; }
             .badge-data-old { background: #f1f5f9; color: #475569; }
+
 
             /* Simple Disclaimer Banner */
             .disclaimer-card {

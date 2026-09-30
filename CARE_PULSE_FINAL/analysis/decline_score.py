@@ -10,12 +10,12 @@ def calculate_functional_decline_score(patient_trend: Dict[str, Any]) -> Dict[st
     """
     Computes explainable 0-100 functional decline score and risk category.
     """
-    if not patient_trend:
+    if not patient_trend or patient_trend.get("has_insufficient_history"):
         return {
             "score": 0.0,
-            "risk_category": "Doing Well",
+            "risk_category": "Missing Information",
             "overall_trend": "→ Stable",
-            "contributing_factors": ["No observation data available."]
+            "contributing_factors": ["Insufficient data for reliable baseline comparison."]
         }
 
     score = 0.0
@@ -62,9 +62,16 @@ def calculate_functional_decline_score(patient_trend: Dict[str, Any]) -> Dict[st
         score += min(recent_incidents * 15.0, 30.0)
         contributing_factors.append(f"{recent_incidents} recent safety/fall incident(s) recorded")
 
+    # Observation Gap Penalty / Factor
+    if patient_trend.get("has_gap"):
+        score += 5.0
+        contributing_factors.append(patient_trend.get("gap_warning", "Observation gap detected (missing daily records)."))
+
     # Freshness Penalty
     freshness = patient_trend.get("freshness", "Fresh")
-    if freshness == "Stale":
+    if freshness == "Aging":
+        contributing_factors.append("Data is Aging (2–3 days since last observation)")
+    elif freshness == "Stale":
         score += 8.0
         contributing_factors.append("Data is Stale (4–7 days since last observation)")
     elif freshness == "Very Stale":

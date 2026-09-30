@@ -57,8 +57,8 @@ def test_14d_vs_7d_trend_detection_gradual_decline():
 def test_freshness_tracking():
     max_date = pd.Timestamp("2026-05-30")
     
-    # Fresh (2 days old)
-    df_fresh = pd.DataFrame({"patient_id": ["P001"], "date": [pd.Timestamp("2026-05-28")], "mobility": [8.0], "nutrition": [85.0], "participation": [8.0]})
+    # Fresh (0 days old)
+    df_fresh = pd.DataFrame({"patient_id": ["P001"], "date": [pd.Timestamp("2026-05-30")], "mobility": [8.0], "nutrition": [85.0], "participation": [8.0]})
     t_fresh = evaluate_patient_trend(df_fresh, max_date)
     assert t_fresh["freshness"] == "Fresh"
 
@@ -71,6 +71,91 @@ def test_freshness_tracking():
     df_very_stale = pd.DataFrame({"patient_id": ["P003"], "date": [pd.Timestamp("2026-05-20")], "mobility": [8.0], "nutrition": [85.0], "participation": [8.0]})
     t_very_stale = evaluate_patient_trend(df_very_stale, max_date)
     assert t_very_stale["freshness"] == "Very Stale"
+
+def test_case_1_normal_continuous_observations():
+    """TEST 1 — Normal continuous observations. Expected: Trend analysis works normally."""
+    dates = pd.date_range("2026-09-01", periods=14)
+    df = pd.DataFrame({
+        "patient_id": ["P001"] * 14,
+        "date": dates,
+        "mobility": [8.5] * 14,
+        "nutrition": [88.0] * 14,
+        "participation": [8.0] * 14,
+        "activity": [7.5] * 14,
+        "incident": [0] * 14
+    })
+    t = evaluate_patient_trend(df)
+    s = calculate_functional_decline_score(t)
+    assert t["freshness"] == "Fresh"
+    assert t["confidence_level"] == "Good Confidence"
+    assert s["score"] < 30.0
+    assert s["risk_category"] == "Doing Well"
+
+def test_case_2_missing_observation_values():
+    """TEST 2 — Missing observation values. Expected: No crash, system reports missing metric, confidence reduced."""
+    df = pd.DataFrame({
+        "patient_id": ["P001"] * 7,
+        "date": pd.date_range("2026-09-01", periods=7),
+        "mobility": [None] * 7,  # Mobility missing
+        "nutrition": [85.0] * 7,
+        "participation": [8.0] * 7,
+        "activity": [7.0] * 7,
+        "incident": [0] * 7
+    })
+    t = evaluate_patient_trend(df)
+    assert t["overall_status"] == "Missing Information"
+    assert t["confidence_level"] == "Insufficient Data"
+    assert "mobility" in t["confidence_reason"].lower()
+
+def test_case_3_sudden_gap_in_daily_observations():
+    """TEST 3 — Sudden gap in daily observations (2026-09-01..03, MISSING 04..06, 2026-09-07)."""
+    df = pd.DataFrame({
+        "patient_id": ["P001"] * 4,
+        "date": [pd.Timestamp("2026-09-01"), pd.Timestamp("2026-09-02"), pd.Timestamp("2026-09-03"), pd.Timestamp("2026-09-07")],
+        "mobility": [8.0, 8.0, 8.0, 7.5],
+        "nutrition": [85.0, 85.0, 85.0, 80.0],
+        "participation": [8.0, 8.0, 8.0, 7.5],
+        "activity": [7.0, 7.0, 7.0, 7.0],
+        "incident": [0, 0, 0, 0]
+    })
+    t = evaluate_patient_trend(df)
+    assert t["has_gap"] is True
+    assert t["gap_warning"] is not None
+    assert "gap" in t["confidence_reason"].lower()
+
+def test_case_4_completely_stale_patient_data():
+    """TEST 4 — Completely stale patient data. Expected: Stale-data indicator, confidence reduced."""
+    max_date = pd.Timestamp("2026-09-30")
+    df = pd.DataFrame({
+        "patient_id": ["P001"] * 5,
+        "date": pd.date_range("2026-09-01", periods=5),  # 25 days ago
+        "mobility": [8.0] * 5,
+        "nutrition": [85.0] * 5,
+        "participation": [8.0] * 5,
+        "activity": [7.0] * 5,
+        "incident": [0] * 5
+    })
+    t = evaluate_patient_trend(df, dataset_max_date=max_date)
+    s = calculate_functional_decline_score(t)
+    assert t["freshness"] in ["Stale", "Very Stale"]
+    assert s["risk_category"] in ["Data May Be Old", "Needs Review", "Urgent Review"]
+
+def test_case_5_insufficient_history():
+    """TEST 5 — Insufficient history (< 4 observations). Expected: 'Insufficient data for reliable baseline comparison.'"""
+    df = pd.DataFrame({
+        "patient_id": ["P001"] * 2,
+        "date": pd.date_range("2026-09-01", periods=2),
+        "mobility": [8.0, 4.0],
+        "nutrition": [85.0, 50.0],
+        "participation": [8.0, 4.0],
+        "activity": [7.0, 3.0],
+        "incident": [0, 0]
+    })
+    t = evaluate_patient_trend(df)
+    s = calculate_functional_decline_score(t)
+    assert t["has_insufficient_history"] is True
+    assert s["score"] == 0.0
+    assert "Insufficient data for reliable baseline comparison." in s["contributing_factors"]
 
 def test_edge_case_missing_data():
     df = pd.DataFrame({
@@ -113,11 +198,9 @@ def test_edge_case_sudden_noisy_change():
     })
     t = evaluate_patient_trend(df)
     s = calculate_functional_decline_score(t)
-    # 14-day baseline vs 7-day average smooths out 1-day noise compared to single threshold
     assert s["score"] < 60.0
 
 def test_early_detection_experiment_metrics():
-    # Build mini synthetic dataset with 1 gradual decline and 1 stable patient
     dates = pd.date_range("2026-05-01", periods=30)
     p1 = pd.DataFrame({
         "patient_id": ["P001"] * 30,

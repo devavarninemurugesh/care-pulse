@@ -13,7 +13,8 @@ from ui.components import (
     render_disclaimer,
     get_risk_badge_html,
     get_freshness_badge_html,
-    get_confidence_badge_html
+    get_confidence_badge_html,
+    render_decline_score_explanation
 )
 
 def render_dashboard():
@@ -21,6 +22,7 @@ def render_dashboard():
     role_title = f"{user_info['role']} Monitoring Dashboard"
     render_header("CARE PULSE", role_title)
     render_disclaimer()
+    render_decline_score_explanation()
 
     processed_data = st.session_state.get("processed_data")
     if not processed_data or not processed_data.get("patient_summaries"):
@@ -202,7 +204,18 @@ def render_dashboard():
     for p in filtered_patients:
         trends = p["trends"]
         score = p["decline_score"]
+        conf_score = p.get("confidence_score", 100.0)
         border_color = '#dc2626' if p['risk_category']=='Urgent Review' else ('#d97706' if p['risk_category']=='Needs Review' else '#16a34a')
+
+        # Stale / Gap warning HTML
+        warning_html = ""
+        if p.get("freshness") in ["Stale", "Very Stale"]:
+            warning_html += f'<div style="background: #fef2f2; border-left: 3px solid #dc2626; color: #991b1b; padding: 6px 10px; border-radius: 4px; font-size: 0.78rem; margin-top: 8px;">⚠️ Observation data is several days old ({p["days_since_last"]}d ago). Trend interpretation confidence is reduced.</div>'
+        if p.get("has_gap"):
+            warning_html += f'<div style="background: #fffbe6; border-left: 3px solid #d97706; color: #92400e; padding: 6px 10px; border-radius: 4px; font-size: 0.78rem; margin-top: 6px;">{p.get("gap_warning")}</div>'
+
+        # Why this signal factors
+        factors_html = "".join([f'<li style="margin-bottom: 2px;">{f}</li>' for f in p.get("contributing_factors", [])])
 
         with st.container():
             st.markdown(f"""
@@ -212,17 +225,25 @@ def render_dashboard():
                             <span style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">Patient {p['patient_id']}</span> &nbsp;
                             {get_risk_badge_html(p['risk_category'])} &nbsp;
                             {get_freshness_badge_html(p['freshness'], p['days_since_last'])} &nbsp;
-                            {get_confidence_badge_html(p['confidence_level'])}
+                            {get_confidence_badge_html(p['confidence_level'], conf_score)}
                         </div>
                         <div style="font-size: 0.95rem; font-weight: 700; color: #1e293b;">
                             Decline Score: <span style="font-size: 1.15rem; color: #2563eb;">{score} / 100</span>
                         </div>
                     </div>
+                    {warning_html}
                     <div style="display: flex; gap: 20px; margin-top: 10px; font-size: 0.82rem; color: #475569; flex-wrap: wrap;">
+                        <div><strong>Last Obs:</strong> {p.get('latest_date', 'N/A')}</div>
                         <div><strong>Mobility (14d vs 7d):</strong> {trends.get('mobility', {}).get('direction', '→ Stable')}</div>
                         <div><strong>Nutrition:</strong> {trends.get('nutrition', {}).get('direction', '→ Stable')}</div>
                         <div><strong>Participation:</strong> {trends.get('participation', {}).get('direction', '→ Stable')}</div>
                         <div><strong>Activity:</strong> {trends.get('activity', {}).get('direction', '→ Stable')}</div>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 0.8rem; color: #334155;">
+                        <strong>Why this signal?</strong>
+                        <ul style="margin: 4px 0 0 16px; padding: 0; color: #475569;">
+                            {factors_html}
+                        </ul>
                     </div>
                 </div>
             """, unsafe_allow_html=True)

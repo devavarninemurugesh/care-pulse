@@ -11,12 +11,14 @@ from ui.components import (
     render_disclaimer,
     get_risk_badge_html,
     get_freshness_badge_html,
-    get_confidence_badge_html
+    get_confidence_badge_html,
+    render_decline_score_explanation
 )
 
 def render_evidence_page():
     render_header("Evidence & Data Freshness", "Explainable justification and signal freshness for patient decline risk.")
     render_disclaimer()
+    render_decline_score_explanation()
 
     processed_data = st.session_state.get("processed_data")
     if not processed_data or not processed_data.get("patient_summaries"):
@@ -61,8 +63,15 @@ def render_evidence_page():
     with col_b:
         st.markdown("#### ⏳ Freshness & Uncertainty")
         st.markdown(f"**Freshness Status:** {get_freshness_badge_html(p['freshness'], p['days_since_last'])}", unsafe_allow_html=True)
-        st.markdown(f"**Confidence Level:** {get_confidence_badge_html(p['confidence_level'])}", unsafe_allow_html=True)
+        conf_score = p.get("confidence_score", 100.0)
+        st.markdown(f"**Confidence Level:** {get_confidence_badge_html(p['confidence_level'], conf_score)}", unsafe_allow_html=True)
         st.markdown(f"**Reason:** {p['confidence_reason']}")
+
+    if p.get("freshness") in ["Stale", "Very Stale"]:
+        st.warning(f"⚠️ Observation data is several days old ({p['days_since_last']} days ago). Trend interpretation confidence is reduced.")
+
+    if p.get("has_gap"):
+        st.warning(p.get("gap_warning", "⚠️ Observation gap detected (missing daily records)."))
 
     st.markdown("---")
 

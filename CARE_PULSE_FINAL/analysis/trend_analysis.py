@@ -41,15 +41,26 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
 
     days_since_last = int((dataset_max_date - latest_date).days)
 
-    # 1. Freshness Classification
-    if days_since_last <= 3:
+    # 1. Freshness Classification (Central Thresholds: 0-1d Fresh, 2-3d Aging, 4-7d Stale, >7d Very Stale)
+    if days_since_last <= 1:
         freshness = "Fresh"
+    elif days_since_last <= 3:
+        freshness = "Aging"
     elif days_since_last <= 7:
         freshness = "Stale"
     else:
         freshness = "Very Stale"
 
-    # 2. Split 14-day baseline vs 7-day recent window
+    # 2. Observation Gap Detection (Missing daily records between observations)
+    date_diffs = (sorted_df["date"] - sorted_df["date"].shift(1)).dt.days
+    max_gap = int(date_diffs.max()) if len(date_diffs) > 1 and not date_diffs.dropna().empty else 1
+    has_gap = max_gap >= 3
+    gap_warning = f"⚠️ Observation gap detected ({max_gap}-day break in daily records). Trend interpretation confidence is reduced." if has_gap else None
+
+    # 3. Insufficient History Check (< 4 observation records)
+    has_insufficient_history = total_records < 4
+
+    # 4. Split 14-day baseline vs 7-day recent window
     cutoff_recent = latest_date - pd.Timedelta(days=7)
     cutoff_baseline = latest_date - pd.Timedelta(days=21)
 
@@ -63,11 +74,7 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
     elif baseline_df.empty or len(baseline_df) == 0:
         baseline_df = sorted_df.iloc[:-len(recent_df)] if len(recent_df) < total_records else sorted_df
 
-    # 3. Missing Data & Uncertainty Detection
-    core_domains = ["mobility", "nutrition", "participation"]
-    supporting_domains = ["activity"]
-
-    # 3. Missing Data & Uncertainty Detection
+    # 5. Missing Data & Uncertainty Detection
     core_domains = ["mobility", "nutrition", "participation"]
     supporting_domains = ["activity"]
 
@@ -78,7 +85,7 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
         if d not in sorted_df.columns:
             missing_core_fields.append(d)
         else:
-            missing_in_recent = recent_df[d].isna().sum()
+            missing_in_recent = int(recent_df[d].isna().sum())
             if missing_in_recent > 0:
                 missing_counts[d] = missing_in_recent
             if recent_df[d].isna().all():
@@ -87,23 +94,40 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
     # Determine Confidence Level & Human-Readable Reasons
     confidence_reasons = []
 
+    if has_insufficient_history:
+        confidence_reasons.append("Insufficient data for reliable baseline comparison.")
+
     if missing_core_fields:
-        confidence_reasons.append(f"Missing core domain observations: {', '.join(missing_core_fields)}")
+        confidence_reasons.append(f"Missing core domain observations: {', '.join(missing_core_fields)}.")
 
     for d, cnt in missing_counts.items():
         confidence_reasons.append(f"{cnt} recent {d} observation(s) missing. The {d} trend may be less reliable.")
 
-    if freshness == "Stale":
-        confidence_reasons.append(f"Observation data is stale ({days_since_last} days since last entry). Current status may differ.")
+    if has_gap:
+        confidence_reasons.append(gap_warning)
+
+    if freshness in ["Aging", "Stale"]:
+        confidence_reasons.append(f"Observation data is {days_since_last} days old. Trend interpretation should be reviewed carefully.")
     elif freshness == "Very Stale":
         confidence_reasons.append(f"Observation data is older than 7 days ({days_since_last} days old). Current functional status may differ from displayed signal.")
 
-    if len(recent_df) < 2:
+    if len(recent_df) < 2 and not has_insufficient_history:
         confidence_reasons.append("There are not enough recent observations to estimate a reliable decline trend.")
 
-    if missing_core_fields or freshness == "Very Stale" or len(recent_df) < 1:
+    # Quantitative Data Confidence Score (%)
+    expected_recent_obs = len(recent_df) * len(core_domains) if len(recent_df) > 0 else 1
+    actual_recent_obs = sum(recent_df[d].notna().sum() for d in core_domains if d in recent_df.columns)
+    completeness_factor = float(actual_recent_obs) / float(expected_recent_obs) if expected_recent_obs > 0 else 0.0
+
+    freshness_factor = 1.0 if freshness == "Fresh" else (0.85 if freshness == "Aging" else (0.50 if freshness == "Stale" else 0.20))
+    continuity_factor = 0.75 if has_gap else 1.0
+    history_factor = 1.0 if total_records >= 7 else (0.5 if total_records >= 4 else 0.2)
+
+    confidence_score = float(round(min(max(completeness_factor * freshness_factor * continuity_factor * history_factor * 100.0, 0.0), 100.0), 1))
+
+    if has_insufficient_history or missing_core_fields or freshness == "Very Stale" or len(recent_df) < 1:
         confidence_level = "Insufficient Data"
-    elif confidence_reasons:
+    elif confidence_score < 75.0 or confidence_reasons:
         confidence_level = "Limited Confidence"
     else:
         confidence_level = "Good Confidence"
@@ -111,7 +135,7 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
 
     confidence_reason_str = " ".join(confidence_reasons)
 
-    # 4. Domain Trend Calculations
+    # 6. Domain Trend Calculations
     trends = {}
     declining_core_count = 0
     improving_core_count = 0
@@ -158,15 +182,15 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
                 "missing_count": len(recent_df)
             }
 
-    # 5. Incident Context
+    # 7. Incident Context
     recent_incidents = int(recent_df["incident"].dropna().sum()) if "incident" in recent_df.columns else 0
     total_incidents = int(sorted_df["incident"].dropna().sum()) if "incident" in sorted_df.columns else 0
 
-    # 6. Overall Status Determination (Pure Observational Signals)
-    if missing_core_fields:
-        overall_status = "Missing Information"
-    elif freshness == "Very Stale":
+    # 8. Overall Status Determination (Pure Observational Signals)
+    if freshness == "Very Stale":
         overall_status = "Data May Be Old"
+    elif has_insufficient_history or missing_core_fields:
+        overall_status = "Missing Information"
     elif declining_core_count >= 2 or recent_incidents >= 1:
         overall_status = "Urgent Review"
     elif declining_core_count == 1:
@@ -181,7 +205,11 @@ def evaluate_patient_trend(patient_df: pd.DataFrame, dataset_max_date: pd.Timest
         "days_since_last": days_since_last,
         "freshness": freshness,
         "confidence_level": confidence_level,
+        "confidence_score": confidence_score,
         "confidence_reason": confidence_reason_str,
+        "has_gap": has_gap,
+        "gap_warning": gap_warning,
+        "has_insufficient_history": has_insufficient_history,
         "overall_status": overall_status,
         "recent_incidents": recent_incidents,
         "total_incidents": total_incidents,

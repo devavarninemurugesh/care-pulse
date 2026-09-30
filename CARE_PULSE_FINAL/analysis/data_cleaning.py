@@ -114,9 +114,8 @@ def clean_and_inspect_dataframe(df: pd.DataFrame, strict_reject_zero_or_missing:
     for col, (min_val, max_val) in numeric_cols.items():
         if col in valid_raw.columns:
             valid_raw[col] = pd.to_numeric(valid_raw[col], errors="coerce")
-            if valid_raw[col].isna().any():
-                valid_raw[col] = valid_raw.groupby("patient_id")[col].transform(lambda x: x.fillna(x.median()))
-                valid_raw[col] = valid_raw[col].fillna(valid_raw[col].median()).fillna(min_val)
+            if col == "incident":
+                valid_raw[col] = valid_raw[col].fillna(0).astype(int)
             valid_raw[col] = valid_raw[col].clip(lower=min_val, upper=max_val)
 
     if "notes" not in valid_raw.columns:

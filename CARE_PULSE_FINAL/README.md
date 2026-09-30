@@ -121,52 +121,65 @@ Dashboard + Evidence Drill-down
 Human Review
 ```
 
-The analysis is designed to make the reason for a signal visible rather than presenting an unexplained prediction. Missing or stale observations are surfaced as uncertainty instead of being silently treated as reliable evidence.
+## Functional Decline Score & Data Confidence
 
-## Role-Based Access Control
+CARE PULSE employs an explainable 0–100 **Functional Decline Score** backed by a transparent **Data Confidence Factor**:
 
-The application contains demo roles with different access scopes. The exact permissions are implemented in `security.py`. The main roles are:
+### 1. Baseline & Recent Periods
+- **14-Day Baseline Period**: Calculates historical baseline mean scores across Mobility (0–10), Nutrition (0–100), Social Participation (0–10), and Daily Activity (0–10).
+- **7-Day Recent Window**: Calculates recent average scores for the latest 7 days.
 
-- **Caregiver** — assigned-patient care workflow
-- **Supervisor** — supervised patient review and evidence
-- **Authorized Staff** — broader patient/data access and evaluation functions
-- **Admin** — full system administration and access
+### 2. Score Calculation & Weighting
+Percentage changes ($\Delta\% = \frac{\text{Recent} - \text{Baseline}}{\text{Baseline}} \times 100$) contribute to the Functional Decline Score:
 
-The sidebar role switcher is provided for demonstration/testing of these access rules.
+- **Mobility Drop**: $\min(|\Delta\%| \times 1.2, 30.0\text{ pts})$
+- **Nutrition Intake Drop**: $\min(|\Delta\%| \times 0.8, 25.0\text{ pts})$
+- **Participation Drop**: $\min(|\Delta\%| \times 0.7, 20.0\text{ pts})$
+- **Daily Activity Drop**: $\min(|\Delta\%| \times 0.5, 15.0\text{ pts})$
+- **Safety / Fall Incidents**: $15.0\text{ pts per recent incident}$ ($\max 30.0\text{ pts}$)
+- **Freshness Adjustment**: $+8.0\text{ pts}$ for Stale (4–7d), $+15.0\text{ pts}$ for Very Stale (>7d)
+- **Observation Gap Penalty**: $+5.0\text{ pts}$ for $\ge 3$-day breaks in daily records
 
-## Installation
+$$\text{Functional Decline Score} = \min(\max(\sum \text{Points}, 0.0), 100.0)$$
 
-### 1. Extract the ZIP
+### 3. Classification Thresholds
+- **🚨 Urgent Review**: Score $\ge 60.0$ or $\ge 2$ core domain drops / recent incident
+- **⚠️ Needs Review**: Score $30.0 – 59.9$ or $1$ core domain drop
+- **✅ Doing Well**: Score $< 30.0$ with stable indicators
+- **⚠️ Missing Information**: Core metric missing or $< 4$ total observation records
+- **⏳ Data May Be Old**: Latest record $> 7$ days old
 
-Open PowerShell in the extracted project folder — the folder containing `app.py` and `requirements.txt`.
+### 4. Missing & Stale Data Handling
+- **Missing Data**: Missing values (`NaN`) are preserved (never filled with zero or silently interpolated). Missing core domains lower data confidence and flag `Missing Information`.
+- **Stale Data Thresholds**:
+  - **0–1 days**: 🟢 **Fresh**
+  - **2–3 days**: 🟡 **Aging**
+  - **4–7 days**: 🔴 **Stale**
+  - **>7 days**: 🚨 **Very Stale**
+  - Stale messages communicate data uncertainty (e.g. *"Observation data is several days old. Trend interpretation confidence is reduced."*) rather than claiming patient deterioration.
 
-### 2. Install dependencies
+### 5. Data Confidence Score
+$$\text{Data Confidence (\%)} = \text{Completeness} \times \text{Freshness Factor} \times \text{Continuity Factor} \times \text{History Factor} \times 100$$
 
-```powershell
-python -m pip install -r requirements.txt
-```
+- **Good Confidence**: $\ge 75\%$
+- **Limited Confidence**: $40\% – 74\%$
+- **Insufficient Data**: $< 40\%$ or $< 4$ observation records
 
-### 3. Start the application
+### 6. Human-Review Requirement & Scope Boundary
+CARE PULSE is purely an observational decision-support prototype. It surfaces longitudinal functional trends to assist authorized human staff. It **never** provides autonomous medical diagnoses, disease predictions, or treatment prescriptions.
 
-```powershell
-python -m streamlit run app.py
-```
+## Edge and Failure Cases Tested
 
-Streamlit will display the local application address in the terminal.
+The automated test suite (`python -m pytest tests/ -v`) explicitly tests and verifies edge/failure cases:
 
-## Running Tests
-
-From the same project directory:
-
-```powershell
-python -m pytest -q
-```
-
-If dependencies are not installed yet, install them first with `requirements.txt`.
-
-## Sample Data
-
-The repository contains sample and synthetic datasets for demonstration and testing. The application can also process an uploaded CSV through its upload workflow.
+| Case | Input Condition | Expected Behaviour |
+|------|------------------|--------------------|
+| Missing mobility | mobility unavailable | Reduced confidence, reports missing mobility |
+| Observation gap | missing daily records | Gap warning, confidence penalty applied |
+| Stale data | old latest observation | Stale indicator, confidence reduced |
+| Insufficient history | too few observations (< 4) | Insufficient history status, score set to 0.0 |
+| Duplicate record | same patient/date | Duplicate record detected and blocked by validation |
+| Invalid range | metric outside allowed range | Validation warning/failure explaining invalid range |
 
 ## Project Limitations
 
